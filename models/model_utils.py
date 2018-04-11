@@ -37,13 +37,12 @@ class injective_pad(nn.Module):
 
 
 class psi(nn.Module):
-    def __init__(self, block_size):
+    def __init__(self, stride=1, if_upsample=0):
         super(psi, self).__init__()
-        self.block_size = block_size
-        self.block_size_sq = block_size*block_size
-
-    def inverse(self, input):
-        downscale_factor = self.block_size
+        self.stride = stride
+        self.if_upsample = if_upsample
+    def down_sample(self, input):
+        downscale_factor = self.stride
         batch_size, channels, in_height, in_width = input.size()
         out_height = int(in_height / downscale_factor)
         out_width = int(in_width / downscale_factor)
@@ -51,10 +50,28 @@ class psi(nn.Module):
         channels = channels*(downscale_factor ** 2)
         shuffle_out = input_view.permute(0, 1, 3, 5, 2, 4).contiguous()
         return shuffle_out.view(batch_size, channels, out_height, out_width)
-
-    def forward(self, input):
-        output = nn.functional.pixel_shuffle(input,self.block_size)
+    def up_sample(self, input):
+        output = nn.functional.pixel_shuffle(input,self.stride)
         return output.contiguous()
+    def forward(self, input):
+        if self.stride == 1:
+            return input    
+        elif self.if_upsample == 1:
+            return self.up_sample(input)
+        elif self.if_upsample == -1:
+            return self.down_sample(input)
+        else:
+            return input
+    def inverse(self, input):
+        if self.stride == 1:
+            return input
+        elif self.if_upsample == 1:
+            return self.down_sample(input)    
+        elif self.if_upsample == -1:
+            return self.up_sample(input)
+        else:
+            return input
+    
 
 class ListModule(object):
     def __init__(self, module, prefix, *args):
