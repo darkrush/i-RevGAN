@@ -1,6 +1,6 @@
 import numpy
 import pickle
-import torch.utils
+import torch.utils.data
 
 class MnistDataset(torch.utils.data.Dataset):
   def __init__(self,filepath,set):
@@ -14,9 +14,10 @@ class MnistDataset(torch.utils.data.Dataset):
     elif set == 'dev':
       self.data,self.target = data[2]
   def __getitem__(self, index):
-    wdata = numpy.concatenate((self.data[index].reshape(1,28,28),self.data[index].reshape(1,28,28)),0)
-    
-    wdata = numpy.pad(wdata,((0,0),(2,2),(2,2)),'constant', constant_values=(0,0))
+    wdata = self.data[index].reshape(28,28)
+    wdata = numpy.pad(wdata,((2,2),(2,2)),'constant', constant_values=(0,0))
+    wdata = wdata.reshape(1,32,32)
+    #wdata = numpy.concatenate((wdata,wdata),0)
     return wdata,self.target[index]
   def __len__(self):
     if set == 'train':

@@ -10,22 +10,48 @@ from models.iRevGan import iRevGener
 from models.iRevGan import Gener
 from models.iRevGan import Disc
 from models.iRevGan import DCGAN_D
+from models.wgan import WGAN_D
+from models.wgan import WGAN_G
 from models.mnist import MnistDataset
 
 use_cuda = True
 train_batch_size = 200
 test_batch_size = 200
-num_epochs = 1000
-d_steps = 5
+num_epochs = 5000
+d_steps = 3
 d_learning_rate= 1e-4
 g_steps = 1
 g_learning_rate = 5e-4
 optim_betas = (0.5, 0.9)
 img_shape = [1,32,32]
-#input_size = img_shape[0]*img_shape[1]*img_shape[2]
-input_size = 128
+input_size = img_shape[0]*img_shape[1]*img_shape[2]
+#input_size = 128
 
 sample_dir = './samples/'
+
+
+def calc_gradient_penalty(netD, real_data, fake_data):
+    #print real_data.size()
+    alpha = torch.rand(real_data.size(0), 1)
+    alpha = alpha.expand(real_data.size())
+    alpha = alpha.cuda() if use_cuda else alpha
+
+    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+
+    if use_cuda:
+        interpolates = interpolates.cuda(gpu)
+    interpolates = autograd.Variable(interpolates, requires_grad=True)
+
+    disc_interpolates = netD(interpolates)
+
+    gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
+                              grad_outputs=torch.ones(disc_interpolates.size()).cuda(gpu) if use_cuda else torch.ones(
+                                  disc_interpolates.size()),
+                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+    return gradient_penalty
+
 
 def main():
   trainset = MnistDataset('./data/mnist.pkl','train')
@@ -34,8 +60,9 @@ def main():
   trainloader = torch.utils.data.DataLoader(trainset, batch_size=train_batch_size, shuffle=True, num_workers=2)
   testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch_size, shuffle=False, num_workers=2)
   #D = Disc(img_shape, block_num=3 )
-  D = DCGAN_D(32, 1, 64,3)
-  G = Gener(img_shape,input_size = 128,block_num=3)
+  D = WGAN_D(32, 1, 64,3)
+  G = WGAN_G()
+  G = iRevGener(img_shape,block_num=10)
   print(G)
   print(D)
   #criterion = thnn.BCEWithLogitsLoss()
