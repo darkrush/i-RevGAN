@@ -90,7 +90,7 @@ class normal_block(nn.Module):
     return self.block(x)
 
 class irevnet_block(nn.Module):
-  def __init__(self, in_shape1,in_shape2,out_shape1,out_shape2,first=False,affineBN=True,mult=4):
+  def __init__(self, in_shape1,in_shape2,out_shape1,out_shape2,first=False,if_BN =True,affineBN=True,mult=4):
     """ buid invertible bottleneck block """
     super(irevnet_block, self).__init__()
     self.first = first
@@ -120,7 +120,7 @@ class irevnet_block(nn.Module):
     layers = []
 
     if not first:
-      if (in_shape1[1] > 1 )and(in_shape1[0]>1):
+      if (in_shape1[1] > 1 )and(in_shape1[0]>1)and(if_BN) :
         layers.append(nn.BatchNorm2d(in_shape1[0], affine=affineBN))
       layers.append(nn.ReLU(inplace=True))
     if out_shape2[1]==in_shape2[1]*2:
@@ -135,15 +135,15 @@ class irevnet_block(nn.Module):
     else:
       layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]//mult), kernel_size=3,
                   stride=1, padding=1, bias=True))
-                  
-    layers.append(nn.BatchNorm2d(int(in_shape2[0]//mult),affine=affineBN))
+    if (out_shape1[1] > 1)and(out_shape1[0]>1)and(if_BN):             
+      layers.append(nn.BatchNorm2d(int(in_shape2[0]//mult),affine=affineBN))
     layers.append(nn.ReLU(inplace=True))
     layers.append(nn.Conv2d(int(in_shape2[0]//mult), int(in_shape2[0]//mult),
                  kernel_size=3, padding=1, bias=True))
     #layers.append(nn.Dropout(p=dropout_rate))
     
     
-    if (out_shape1[1] > 1)and(out_shape1[0]>1):
+    if (out_shape1[1] > 1)and(out_shape1[0]>1)and(if_BN):
       layers.append(nn.BatchNorm2d(int(in_shape2[0]//mult), affine=affineBN))
     layers.append(nn.ReLU(inplace=True))
     layers.append(nn.Conv2d(int(in_shape2[0]//mult), out_shape2[0], kernel_size=3,
@@ -250,12 +250,15 @@ class iRevGener(nn.Module):
       channels = channels + ([channel//(stride**2)]*(depth))
     for stride in strides:
       in_sizes = in_sizes + [in_sizes[-1]*stride]
-    for channel, in_size, stride in zip(channels, in_sizes, strides):
+    for idx,(channel, in_size, stride) in enumerate(zip(channels, in_sizes, strides)):
+      if_BN = True
+      if idx == len(channels):
+        if_BN = False  
       in_shape1 = (int(in_ch//2),in_size,in_size)
       in_shape2 = in_shape1
       out_shape1 = (int(in_ch//(2*stride**2)),in_size*stride,in_size*stride)
       out_shape2 = out_shape1
-      block_list.append(_block(in_shape1,in_shape2,out_shape1,out_shape2,first=self.first,mult=mult))
+      block_list.append(_block(in_shape1,in_shape2,out_shape1,out_shape2,first=self.first,if_BN = if_BN,mult=mult))
       in_ch = channel
       self.first = False
     return block_list

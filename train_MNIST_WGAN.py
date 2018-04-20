@@ -1,5 +1,6 @@
 import numpy as np
 from PIL import Image
+import os
 import torch
 import torch.nn as thnn
 import torch.optim as thopt
@@ -15,19 +16,21 @@ from models.wgan import WGAN_G
 from models.mnist import MnistDataset
 
 use_cuda = True
-train_batch_size = 200
-test_batch_size = 200
-num_epochs = 5000
-d_steps = 3
-d_learning_rate= 1e-4
+train_batch_size = 256
+test_batch_size = 256
+num_epochs = 2000
+d_steps = 5
+d_learning_rate= 2e-4
 g_steps = 1
-g_learning_rate = 5e-4
+g_learning_rate = 4e-4
 optim_betas = (0.5, 0.9)
+CLIP_BOUND = 0.01
 img_shape = [1,32,32]
 input_size = img_shape[0]*img_shape[1]*img_shape[2]
 #input_size = 128
-
-sample_dir = './samples/'
+LOG_PATH = './WGAN/logs/'
+SNAP_PATH = './WGAN/snapshot/'
+sample_dir = './WGAN/samples/'
 
 def main():
   trainset = MnistDataset('./data/mnist.pkl','train')
@@ -37,33 +40,38 @@ def main():
   testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch_size, shuffle=False, num_workers=2)
   #D = Disc(img_shape, block_num=3 )
   D = WGAN_D(32, 1, 64,3)
-  G = WGAN_G()
-  G = iRevGener(img_shape,block_num=10)
+  #G = WGAN_G()
+  G = iRevGener(img_shape,block_num=5)
+  if use_cuda:
+    D,G = D.cuda(),G.cuda()
+    D = thnn.DataParallel(D, device_ids=(0,1,2,3))
+    G= thnn.DataParallel(G, device_ids=(0,1,2,3))
+    cudnn.benchmark = True
+
+  if os.path.exists(SNAP_PATH+'D.pkl'):
+    D.load_state_dict(torch.load(SNAP_PATH+'D.pkl'))
+    print('!!!!!Loaded D parameter!!!!!')
+  if os.path.exists(SNAP_PATH+'G.pkl'):
+    G.load_state_dict(torch.load(SNAP_PATH+'G.pkl'))
+    print('!!!!!Loaded G parameter!!!!!')
   print(G)
   print(D)
   #criterion = thnn.BCEWithLogitsLoss()
-  if use_cuda:
-        D,G = D.cuda(),G.cuda()
-        D = thnn.DataParallel(D, device_ids=(0,3))
-
-        G= thnn.DataParallel(G, device_ids=(0,3))
-        #range(torch.cuda.device_count()))
-        cudnn.benchmark = True
 
   
   d_optimizer = thopt.Adam(D.parameters(), lr=d_learning_rate, betas=optim_betas)
   g_optimizer = thopt.Adam(G.parameters(), lr=g_learning_rate, betas=optim_betas)
   D.train()
   G.train()
+  with open(LOG_PATH+'log.txt', 'w') as f:
+    print('') 
   for epoch in range(num_epochs):
-    print('======epoch %d ======'%epoch)
+    print('\n======epoch %d ======'%epoch)
     d_index = 0
 
     for batch_idx, (inputs, targets) in enumerate(trainloader):
       for p in D.parameters():  # reset requires_grad
         p.requires_grad = True
-      #for p in D.parameters():
-      #  p.data.clamp_(-0.01,0.01)
       batch_size = targets.size()[0]
       onesV = thV(torch.ones((batch_size,1)))
       zerosV = thV(torch.zeros((batch_size,1)))
@@ -78,7 +86,6 @@ def main():
         d_real_data=d_real_data.cuda()
       d_real_decision = D(d_real_data)
       d_real_error = -torch.mean(d_real_decision)  # ones = true
-      #d_real_error.backward() # compute/store gradients, but don't change params
       
       d_gen_input = thV(torch.Tensor(np.random.normal(0,1,(batch_size,input_size,1,1))))
       if use_cuda:
@@ -87,14 +94,14 @@ def main():
       d_fake_decision = D(d_fake_data)
 
       d_fake_error = torch.mean(d_fake_decision)  # zeros = fake
-      #d_fake_error.backward()
       error = d_fake_error+d_real_error
       error.backward()
       d_optimizer.step()
       for p in D.parameters():
-        p.data.clamp_(-0.01, 0.01)
-
-      print('batch_idx %d       '%batch_idx+'d_real_error = %f    d_fake_error = %f'%(-d_real_error,d_fake_error),end='\r')
+        p.data.clamp_(-CLIP_BOUND, CLIP_BOUND)
+      with open(LOG_PATH+'log.txt', 'a+') as f:
+        print('epoch %d '%epoch+ 'batch_idx %d       '%batch_idx+'d_real_error = %f    d_fake_error = %f'%(-d_real_error,d_fake_error),end='\n',file = f)
+      print('epoch %d '%epoch+ 'batch_idx %d       '%batch_idx+'d_real_error = %f    d_fake_error = %f'%(-d_real_error,d_fake_error),end='\r')
       d_index=d_index+1
       if d_index%d_steps == 0:
         for p in D.parameters():
@@ -112,7 +119,7 @@ def main():
           g_error.backward()
           g_optimizer.step()  # Only optimizes G's parameters
           
-    index_list = np.random.randint(0,trainset.__len__(),size=(10,1)).tolist()
+    index_list = np.random.randint(0,testset.__len__(),size=(10,1)).tolist()
     for i,index in enumerate(index_list):
       samp = testset.__getitem__(index);
       im = np.uint8(samp[0][0].reshape((32,32))*255)
@@ -137,6 +144,9 @@ def main():
     im = Image.fromarray(img)
 #    im.show()
     im.save(sample_dir+'%d.jpg'%(epoch))
+    torch.save(G.state_dict(), SNAP_PATH+'G.pkl')
+    torch.save(D.state_dict(), SNAP_PATH+'D.pkl')
+
 
 if __name__ == '__main__':
    main()

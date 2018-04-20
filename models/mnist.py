@@ -20,7 +20,7 @@ class MnistDataset(torch.utils.data.Dataset):
     #wdata = numpy.concatenate((wdata,wdata),0)
     return wdata,self.target[index]
   def __len__(self):
-    if set == 'train':
+    if self.set == 'train':
       return 50000
     else:
       return 10000

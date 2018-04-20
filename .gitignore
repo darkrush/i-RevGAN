@@ -1,3 +1,6 @@
-./samples/*
+*/samples/*
 *.swp
-
+*.pyc
+*.npy
+./WGAN/*
+WGAN

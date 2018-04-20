@@ -4,6 +4,7 @@ import torch
 import torch.nn as thnn
 import torch.optim as thopt
 import torch.backends.cudnn as cudnn
+import torch.autograd as autograd
 from torch.autograd import Variable as thV
 
 from models.iRevGan import iRevGener
@@ -27,30 +28,32 @@ img_shape = [1,32,32]
 input_size = img_shape[0]*img_shape[1]*img_shape[2]
 #input_size = 128
 
-sample_dir = './samples/'
+sample_dir = './samples/gp/'
 
 
-def calc_gradient_penalty(netD, real_data, fake_data):
-    #print real_data.size()
-    alpha = torch.rand(real_data.size(0), 1)
-    alpha = alpha.expand(real_data.size())
-    alpha = alpha.cuda() if use_cuda else alpha
+def calc_gradient_penalty(netD, real_data, fake_data,LAMBDA = 10):
+  #print real_data.size()
+  alpha = torch.rand(real_data.size()[0],1,1,1)
+  alpha = alpha.expand(real_data.size())
+  alpha = alpha.cuda() if use_cuda else alpha
 
-    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+  interpolates = alpha * real_data + ((1 - alpha) * fake_data)
 
-    if use_cuda:
-        interpolates = interpolates.cuda(gpu)
-    interpolates = autograd.Variable(interpolates, requires_grad=True)
+  if use_cuda:
+      interpolates = interpolates.cuda()
+  interpolates = thV(interpolates, requires_grad=True)
 
-    disc_interpolates = netD(interpolates)
+  disc_interpolates = netD(interpolates)
 
-    gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              grad_outputs=torch.ones(disc_interpolates.size()).cuda(gpu) if use_cuda else torch.ones(
-                                  disc_interpolates.size()),
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+  gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
+                            grad_outputs=torch.ones(disc_interpolates.size()).cuda() if use_cuda else torch.ones(
+                                disc_interpolates.size()),
+                            create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
-    return gradient_penalty
+  gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+  return gradient_penalty
+   
+
 
 
 def main():
@@ -61,7 +64,7 @@ def main():
   testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch_size, shuffle=False, num_workers=2)
   #D = Disc(img_shape, block_num=3 )
   D = WGAN_D(32, 1, 64,3)
-  G = WGAN_G()
+ # G = WGAN_G()
   G = iRevGener(img_shape,block_num=10)
   print(G)
   print(D)
@@ -113,10 +116,14 @@ def main():
       d_fake_error = torch.mean(d_fake_decision)  # zeros = fake
       #d_fake_error.backward()
       error = d_fake_error+d_real_error
+      
+      gradient_penalty = calc_gradient_penalty(D, d_real_data.data, d_fake_data.data)
+      
+      error = d_fake_error+d_real_error + gradient_penalty
       error.backward()
       d_optimizer.step()
-      for p in D.parameters():
-        p.data.clamp_(-0.01, 0.01)
+     # for p in D.parameters():
+     #   p.data.clamp_(-0.01, 0.01)
 
       print('batch_idx %d       '%batch_idx+'d_real_error = %f    d_fake_error = %f'%(-d_real_error,d_fake_error),end='\r')
       d_index=d_index+1
@@ -164,3 +171,6 @@ def main():
 
 if __name__ == '__main__':
    main()
+
+   
+ 
