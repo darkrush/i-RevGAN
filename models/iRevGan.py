@@ -121,32 +121,32 @@ class irevnet_block(nn.Module):
 
     if not first:
       if (in_shape1[1] > 1 )and(in_shape1[0]>1)and(if_BN) :
-        layers.append(nn.BatchNorm2d(in_shape1[0], affine=affineBN))
+        layers.append(nn.InstanceNorm2d(in_shape1[0], affine=affineBN))
       layers.append(nn.ReLU(inplace=True))
     if out_shape2[1]==in_shape2[1]*2:
       layers.append(nn.Upsample(scale_factor = 2,mode='bilinear'))
-      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]//mult), kernel_size=3,
+      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]*mult), kernel_size=3,
                   stride=1, padding=1, bias=True))
       #layers.append(nn.ConvTranspose2d(in_shape2[0], int(in_shape2[0]//mult), kernel_size=3,
       #            stride=2, padding=1,output_padding =1, bias=True))
     elif 2*out_shape2[1]==in_shape2[1]:
-      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]//mult), kernel_size=3,
+      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]*mult), kernel_size=3,
                   stride=2, padding=1, bias=True))
     else:
-      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]//mult), kernel_size=3,
+      layers.append(nn.Conv2d(in_shape2[0], int(in_shape2[0]*mult), kernel_size=3,
                   stride=1, padding=1, bias=True))
     if (out_shape1[1] > 1)and(out_shape1[0]>1)and(if_BN):             
-      layers.append(nn.BatchNorm2d(int(in_shape2[0]//mult),affine=affineBN))
+      layers.append(nn.InstanceNorm2d(int(in_shape2[0]*mult),affine=affineBN))
     layers.append(nn.ReLU(inplace=True))
-    layers.append(nn.Conv2d(int(in_shape2[0]//mult), int(in_shape2[0]//mult),
+    layers.append(nn.Conv2d(int(in_shape2[0]*mult), int(in_shape2[0]*mult),
                  kernel_size=3, padding=1, bias=True))
     #layers.append(nn.Dropout(p=dropout_rate))
     
     
     if (out_shape1[1] > 1)and(out_shape1[0]>1)and(if_BN):
-      layers.append(nn.BatchNorm2d(int(in_shape2[0]//mult), affine=affineBN))
+      layers.append(nn.InstanceNorm2d(int(in_shape2[0]*mult), affine=affineBN))
     layers.append(nn.ReLU(inplace=True))
-    layers.append(nn.Conv2d(int(in_shape2[0]//mult), out_shape2[0], kernel_size=3,
+    layers.append(nn.Conv2d(int(in_shape2[0]*mult), out_shape2[0], kernel_size=3,
                   padding=1, bias=True))
     self.bottleneck_block = nn.Sequential(*layers)
 
@@ -220,14 +220,19 @@ class resnet_block(nn.Module):
 
 
 class iRevGener(nn.Module):
-  def __init__(self,output_shape,block_num=1,mult=2):
+  def __init__(self,output_shape,block_num=1,mult=2,in_size=0):
     super(iRevGener, self).__init__()
+
     self.output_shape = output_shape # [C,H,W]
     self.stride_number = math.ceil(math.log(output_shape[1],2))
     self.output_shape_raw = output_shape
     self.output_shape_raw[1] = 2**self.stride_number
     self.output_shape_raw[2] = 2**self.stride_number
     self.input_shape_raw =  self.output_shape_raw[0]*self.output_shape_raw[1]*self. output_shape_raw[2]
+    if in_size == 0:
+      self.in_size = self.input_shape_raw
+    else:
+      self.in_size = in_size
     self.first = True
     self.lastpsi = psi(2,1)
     nChannels = []
@@ -237,7 +242,7 @@ class iRevGener(nn.Module):
     nStrides = [2]*(self.stride_number-1)
     self.stack = self.irevnet_stack(irevnet_block, nChannels, nBlocks,nStrides,
                                     in_ch=self.input_shape_raw, mult=mult)
-    
+    self.first_linear = nn.Linear(self.in_size, self.input_shape_raw,bias=False)
     
   def irevnet_stack(self, _block, nChannels, nBlocks, nStrides , in_ch, mult):
     """ Create stack of irevnet blocks """
@@ -265,13 +270,15 @@ class iRevGener(nn.Module):
 
   def forward(self, x):
     """ irevnet forward """
+    x=self.first_linear(x)
     n = self.input_shape_raw//2
     out = (x[:, :n, :, :], x[:, n:, :, :])
     for block in self.stack:
       out = block.forward(out)
     out = merge(out[0], out[1])
     out = self.lastpsi.forward(out)
-    return F.sigmoid(out)
+    return F.tanh(out)
+    #return F.sigmoid(out)
 
   def inverse(self, out):
     """ irevnet inverse """
@@ -280,6 +287,7 @@ class iRevGener(nn.Module):
     for i in range(len(self.stack)):
         out = self.stack[-1-i].inverse(out)
     out = merge(out[0],out[1])
+    
     return out
     
 class Disc(nn.Module):

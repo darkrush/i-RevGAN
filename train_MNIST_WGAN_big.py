@@ -25,11 +25,11 @@ g_steps = 1
 g_learning_rate = 4e-4
 optim_betas = (0.5, 0.9)
 CLIP_BOUND = 0.01
-GAN_out_shape = [1,32,32]
+GAN_out_shape = [1,64,64]
 img_shape = [1,32,32]
-#input_size = GAN_out_shape[0]*GAN_out_shape[1]*GAN_out_shape[2]
-input_size = 64
-ROOT_PATH = './WGAN/'
+input_size = GAN_out_shape[0]*GAN_out_shape[1]*GAN_out_shape[2]
+#input_size = 128
+ROOT_PATH = './WGAN-big/'
 LOG_PATH = ROOT_PATH+'logs/'
 SNAP_PATH = ROOT_PATH+'snapshot/'
 sample_dir = ROOT_PATH+'samples/'
@@ -41,9 +41,9 @@ def main():
   trainloader = torch.utils.data.DataLoader(trainset, batch_size=train_batch_size, shuffle=True, num_workers=2)
   testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch_size, shuffle=False, num_workers=2)
   #D = Disc(img_shape, block_num=3 )
-  D = WGAN_D(32, 1, 64,3)
+  D = WGAN_D(32, 1, 64,3,GAN_out_shape)
   #G = WGAN_G()
-  G = iRevGener(img_shape,block_num=5,in_size = input_size)
+  G = iRevGener(GAN_out_shape,block_num=5)
   if use_cuda:
     D,G = D.cuda(),G.cuda()
     D = thnn.DataParallel(D, device_ids=(0,3))
@@ -83,7 +83,7 @@ def main():
       D.zero_grad()
       if use_cuda:
         inputs = inputs.cuda()
-      d_real_data = thV(inputs)*2-1
+      d_real_data = thV(inputs)
       if use_cuda:
         d_real_data=d_real_data.cuda()
       d_real_decision = D(d_real_data)
@@ -124,7 +124,7 @@ def main():
     index_list = np.random.randint(0,testset.__len__(),size=(10,1)).tolist()
     for i,index in enumerate(index_list):
       samp = testset.__getitem__(index);
-      im = np.uint8(samp[0][0].reshape((32,32))*255)
+      im = np.uint8(samp[0][0].reshape((GAN_out_shape[1],GAN_out_shape[2]))*255)
       if i == 0:
         img_concat = im
       else:
@@ -133,9 +133,9 @@ def main():
     gen_input = thV(torch.Tensor(np.random.normal(0,1,(10,input_size,1,1))))
     if use_cuda:
       gen_input=gen_input.cuda()
-    g_fake_data = (G(gen_input)+1)/2
+    g_fake_data = G(gen_input)
     for idx in range(10):
-      im = g_fake_data.data[idx,:,:,:].view((32,32)).cpu().numpy()
+      im = g_fake_data.data[idx,:,:,:].view((GAN_out_shape[1],GAN_out_shape[2])).cpu().numpy()
       im = np.uint8(im*255)
       if idx == 0:
         img_concat = im

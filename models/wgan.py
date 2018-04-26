@@ -18,7 +18,7 @@ import torch.nn.parallel
 
 
 class WGAN_D(nn.Module):
-  def __init__(self, isize, nc, ndf, n_extra_layers=2, if_BN = True):
+  def __init__(self, isize, nc, ndf, n_extra_layers=2, if_BN = True,input_size = (1,32,32)):
     super(WGAN_D, self).__init__()
     assert isize % 16 == 0, "isize has to be a multiple of 16"
 
@@ -52,13 +52,16 @@ class WGAN_D(nn.Module):
                       nn.LeakyReLU(0.2, inplace=True))
       cndf = cndf * 2
       csize = csize / 2
-      
-      
+    self.in_size = input_size
+    kh = self.in_size[1]//32
+    kw = self.in_size[2]//32
+    #self.input_pool = nn.AvgPool2d((kh,kw), stride=(kh,kw)) 
     self.finalsize = int(csize*csize*cndf)
     self.main = main
     self.output = nn.Linear(self.finalsize, 1,bias=False)
 
   def forward(self, input):
+    #output = self.main(self.input_pool(input))
     output = self.main(input)
     output = output.view(-1,self.finalsize)
     output = self.output(output)
@@ -77,17 +80,17 @@ class WGAN_G(nn.Module):
     layers.append(nn.Upsample(scale_factor = 2 ,mode='bilinear'))
     layers.append(nn.Conv2d(128, 64, kernel_size=3,stride=1, padding=1, bias=True))
     #layers.append(nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1,output_padding =1, bias=True))
-    layers.append(nn.BatchNorm2d(64, affine=True))
+    layers.append(nn.InstanceNorm2d(64, affine=True))
     layers.append(nn.ReLU(inplace=True))
     
     layers.append(nn.Conv2d(64, 32, kernel_size=3,stride=1, padding=1, bias=True))
-    layers.append(nn.BatchNorm2d(32, affine=True))
+    layers.append(nn.InstanceNorm2d(32, affine=True))
     layers.append(nn.ReLU(inplace=True))
 
     layers.append(nn.Upsample(scale_factor = 2,mode='bilinear'))
     layers.append(nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1, bias=True))
     #layers.append(nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1,output_padding =1, bias=True))
-    layers.append(nn.BatchNorm2d(16, affine=True))
+    layers.append(nn.InstanceNorm2d(16, affine=True))
     layers.append(nn.ReLU(inplace=True))
     
     layers.append(nn.Conv2d(16, 1, kernel_size=3,stride=1, padding=1, bias=False))
